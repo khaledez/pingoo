@@ -3,6 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::{sync::watch, task::JoinSet};
 
 use crate::{
+    auth::AuthManagerBuilder,
     captcha::CaptchaManager,
     geoip::GeoipDB,
     listeners::Listener,
@@ -57,6 +58,8 @@ impl Server {
             })
             .collect();
 
+        let auth_managers = AuthManagerBuilder::new(self.config.services.clone()).build()?;
+
         let http_services: HashMap<String, Arc<dyn HttpService>> = self
             .config
             .services
@@ -74,6 +77,8 @@ impl Server {
 
         let tls_manager = Arc::new(TlsManager::new(&self.config.tls).await?);
         tls_manager.start_acme_in_background();
+
+        let auth_managers_arc = Arc::new(auth_managers);
 
         for listener_config in self.config.listeners {
             let listener_address = listener_config.address;
@@ -112,6 +117,7 @@ impl Server {
                         lists.clone(),
                         geoip_db.clone(),
                         captcha_manager.clone(),
+                        auth_managers_arc.clone(),
                     ))
                 }
                 ListenerProtocol::Https => {
@@ -128,6 +134,7 @@ impl Server {
                         lists.clone(),
                         geoip_db.clone(),
                         captcha_manager.clone(),
+                        auth_managers_arc.clone(),
                     ))
                 }
             };

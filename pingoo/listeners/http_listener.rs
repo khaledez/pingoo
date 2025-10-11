@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, str::FromStr, sync::Arc};
+use std::{collections::HashMap, net::SocketAddr, str::FromStr, sync::Arc};
 
 use ::rules::Action;
 use cookie::Cookie;
@@ -13,6 +13,7 @@ use tracing::{debug, error};
 
 use crate::{
     Error,
+    auth::OAuthManager,
     captcha::{CAPTCHA_VERIFIED_COOKIE, CaptchaManager, generate_captcha_client_id},
     config::ListenerConfig,
     geoip::{self, GeoipDB, GeoipRecord},
@@ -36,6 +37,7 @@ pub struct HttpListener {
     lists: Arc<bel::Value>,
     geoip: Option<Arc<GeoipDB>>,
     captcha_manager: Arc<CaptchaManager>,
+    auth_managers: Arc<HashMap<String, Arc<OAuthManager>>>,
 }
 
 impl HttpListener {
@@ -46,6 +48,7 @@ impl HttpListener {
         lists: Arc<bel::Value>,
         geoip: Option<Arc<GeoipDB>>,
         captcha_manager: Arc<CaptchaManager>,
+        auth_managers: Arc<HashMap<String, Arc<OAuthManager>>>,
     ) -> Self {
         return HttpListener {
             name: Arc::new(config.name),
@@ -56,6 +59,7 @@ impl HttpListener {
             lists,
             geoip,
             captcha_manager,
+            auth_managers,
         };
     }
 }
@@ -98,6 +102,7 @@ impl Listener for HttpListener {
                         self.lists.clone(),
                         self.geoip.clone(),
                         self.captcha_manager.clone(),
+                        self.auth_managers.clone(),
                         false,
                         graceful_shutdown.watcher(),
                     ));
@@ -127,6 +132,7 @@ pub(super) async fn serve_http_requests<IO: hyper::rt::Read + hyper::rt::Write +
     lists: Arc<bel::Value>,
     geoip: Option<Arc<GeoipDB>>,
     captcha_manager: Arc<CaptchaManager>,
+    auth_managers: Arc<HashMap<String, Arc<OAuthManager>>>,
     use_tls: bool,
     graceful_shutdown_watcher: graceful::Watcher,
 ) {
@@ -136,6 +142,7 @@ pub(super) async fn serve_http_requests<IO: hyper::rt::Read + hyper::rt::Write +
         let lists = lists.clone();
         let geoip = geoip.clone();
         let captcha_manager = captcha_manager.clone();
+        let auth_managers = auth_managers.clone();
         async move {
             let host = get_host(&req);
             let path = get_path(&req).to_string();
@@ -203,6 +210,17 @@ pub(super) async fn serve_http_requests<IO: hyper::rt::Read + hyper::rt::Write +
                     .await);
             }
 
+            if path == "/auth/callback" {
+                match crate::auth::AuthMiddleware::handle_oauth_callback(&auth_managers, &req).await {
+                    Some(response) => return Ok(response),
+                    _ => (),
+                }
+            }
+
+            if path == "/auth/logout" {
+                return Ok(crate::auth::AuthMiddleware::handle_logout(&auth_managers, &req));
+            }
+
             // apply rules
             let request_data = rules::RequestData {
                 host: &request_context.host,
@@ -265,6 +283,20 @@ pub(super) async fn serve_http_requests<IO: hyper::rt::Read + hyper::rt::Write +
 
             for service in services.as_ref() {
                 if service.match_request(&rules_ctx) {
+                    let service_name = service.name();
+
+                    if let Some(oauth_manager) = auth_managers.get(&service_name) {
+                        let session_manager = oauth_manager.session_manager();
+
+                        if let Err(auth_response) = crate::auth::AuthMiddleware::handle_service_auth(
+                            session_manager,
+                            oauth_manager,
+                            &mut req,
+                        ) {
+                            return Ok(auth_response);
+                        }
+                    }
+
                     return Ok(service.handle_http_request(req).await);
                 }
             }

@@ -1,0 +1,74 @@
+# Pingoo Configuration with OAuth Authentication
+#
+# This example shows how to enable OAuth/OIDC authentication on a per-service basis.
+# Each service can have its own auth configuration with its own OAuth provider and credentials.
+
+listeners:
+  web:
+    address: https://0.0.0.0:443
+    services:
+      - admin_dashboard  # This service requires auth
+      - public_api       # This service has no auth
+
+services:
+  # Protected service - requires OAuth authentication
+  admin_dashboard:
+    http_proxy:
+      - http://backend:8080
+
+    # OAuth configuration (Google example)
+    auth:
+      provider: google
+      client_id: "your-client-id.apps.googleusercontent.com"
+      client_secret: "your-client-secret"
+      redirect_url: "https://yourdomain.com/auth/callback"
+
+    # Optional: Route pattern to match requests
+    route: 'path.starts_with("/admin")'
+
+  # Public service - no authentication required
+  public_api:
+    http_proxy:
+      - http://api-backend:3000
+    route: 'path.starts_with("/api")'
+
+# TLS configuration (required for secure cookies)
+tls:
+  acme:
+    domains:
+      - yourdomain.com
+
+# Example with Microsoft OAuth
+# services:
+#   corporate_app:
+#     http_proxy:
+#       - http://internal-app:9000
+#     auth:
+#       provider: microsoft
+#       client_id: "your-azure-app-id"
+#       client_secret: "your-azure-client-secret"
+#       redirect_url: "https://corp.example.com/auth/callback"
+
+# How it works:
+#
+# 1. User requests a protected resource: GET /admin/users
+# 2. Pingoo checks if user has valid session
+# 3. If no session: redirect to OAuth provider (Google, Microsoft, etc.)
+# 4. User authenticates with provider
+# 5. Provider redirects back to: /auth/callback?code=...&state=...
+# 6. Pingoo exchanges code for access token + ID token
+# 7. Pingoo validates ID token signature and claims
+# 8. Pingoo creates encrypted session cookie
+# 9. User redirected to original URL: /admin/users
+# 10. Backend receives request with user identity headers:
+#     X-User-ID: 1234567890
+#     X-User-Email: user@example.com
+#     X-User-Name: John Doe
+
+# Security features:
+# - Session cookies: AES-256-GCM encrypted, HMAC-SHA256 signed
+# - Cookie flags: HttpOnly, Secure, SameSite=Lax
+# - CSRF protection: Double-submit cookie pattern
+# - JWT validation: RS256 signature, exp/nbf/iss/aud claims
+# - Zero-trust: Every request validated independently
+# - Memory safety: Rust + zeroize for sensitive data

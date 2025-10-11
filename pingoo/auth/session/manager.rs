@@ -1,0 +1,308 @@
+use std::{sync::Arc, time::Duration};
+
+use cookie::Cookie;
+use http::{HeaderValue, Request, Response, header};
+use thiserror::Error;
+
+use super::{SessionCrypto, SessionStore, Session};
+
+const COOKIE_NAME : &str = "__pingoo_oauth_session";
+
+#[derive(Debug, Error)]
+pub enum SessionError {
+    #[error("Session not found")]
+    NotFound,
+    #[error("Session expired")]
+    Expired,
+    #[error("Invalid CSRF token")]
+    InvalidCsrf,
+    #[error("Crypto error: {0}")]
+    Crypto(String),
+    #[error("Cookie error: {0}")]
+    Cookie(String),
+}
+
+pub struct SessionConfig {
+    pub encrypt_key: [u8; 32],
+    pub sign_key: [u8; 32],
+    pub domain: Option<String>,
+    pub secure: bool,
+    pub duration: Duration,
+}
+
+impl SessionConfig {
+    pub fn new(encrypt_key: [u8; 32], sign_key: [u8; 32]) -> Self {
+        Self {
+            encrypt_key,
+            sign_key,
+            domain: None,
+            secure: true,
+            duration: Duration::from_secs(86400),
+        }
+    }
+}
+
+pub struct SessionManager {
+    store: Arc<SessionStore>,
+    crypto: Arc<SessionCrypto>,
+    config: SessionConfig,
+}
+
+impl SessionManager {
+    pub fn new(config: SessionConfig) -> Result<Self, SessionError> {
+        let crypto = SessionCrypto::new(&config.encrypt_key, &config.sign_key)
+            .map_err(|e| SessionError::Crypto(e.to_string()))?;
+
+        Ok(Self {
+            store: Arc::new(SessionStore::new(config.duration)),
+            crypto: Arc::new(crypto),
+            config,
+        })
+    }
+
+    pub fn create_session(
+        &self,
+        user_id: String,
+        email: String,
+        name: String,
+        picture: Option<String>,
+    ) -> Result<Session, SessionError> {
+        let session_id = self
+            .crypto
+            .generate_session_id()
+            .map_err(|e| SessionError::Crypto(e.to_string()))?;
+
+        let csrf_token = self
+            .crypto
+            .generate_csrf_token()
+            .map_err(|e| SessionError::Crypto(e.to_string()))?;
+
+        let session = self.store.create(session_id, user_id, email, name, picture, csrf_token);
+
+        Ok(session)
+    }
+
+    pub fn set_session_cookie<B>(
+        &self,
+        response: &mut Response<B>,
+        session: &Session,
+    ) -> Result<(), SessionError> {
+        let encrypted = self
+            .crypto
+            .encrypt(session.id.as_bytes(), &self.config.encrypt_key)
+            .map_err(|e| SessionError::Crypto(e.to_string()))?;
+
+        let expiration = cookie::time::OffsetDateTime::from_unix_timestamp(session.expires_at.timestamp())
+            .map_err(|e| SessionError::Cookie(format!("Invalid timestamp: {}", e)))?;
+
+        let mut cookie = Cookie::build((COOKIE_NAME, encrypted))
+            .path("/")
+            .http_only(true)
+            .secure(self.config.secure)
+            .same_site(cookie::SameSite::Lax)
+            .expires(cookie::Expiration::DateTime(expiration))
+            .build();
+
+        if let Some(ref domain) = self.config.domain {
+            cookie.set_domain(domain.clone());
+        }
+
+        response.headers_mut().append(
+            header::SET_COOKIE,
+            HeaderValue::from_str(&cookie.to_string())
+                .map_err(|e| SessionError::Cookie(e.to_string()))?,
+        );
+
+        Ok(())
+    }
+
+    pub fn set_csrf_cookie<B>(
+        &self,
+        response: &mut Response<B>,
+        csrf_token: &str,
+        expires_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), SessionError> {
+        let expiration = cookie::time::OffsetDateTime::from_unix_timestamp(expires_at.timestamp())
+            .map_err(|e| SessionError::Cookie(format!("Invalid timestamp: {}", e)))?;
+
+        let mut cookie = Cookie::build(("csrf_token", csrf_token))
+            .path("/")
+            .secure(self.config.secure)
+            .same_site(cookie::SameSite::Strict)
+            .expires(cookie::Expiration::DateTime(expiration))
+            .build();
+
+        if let Some(ref domain) = self.config.domain {
+            cookie.set_domain(domain.clone());
+        }
+
+        response.headers_mut().append(
+            header::SET_COOKIE,
+            HeaderValue::from_str(&cookie.to_string())
+                .map_err(|e| SessionError::Cookie(e.to_string()))?,
+        );
+
+        Ok(())
+    }
+
+    pub fn get_session<B>(&self, request: &Request<B>) -> Result<Session, SessionError> {
+        let session_id = self.get_session_id(request)?;
+        let session = self.store.get(&session_id).ok_or(SessionError::NotFound)?;
+
+        if session.expires_at < chrono::Utc::now() {
+            self.store.delete(&session_id);
+            return Err(SessionError::Expired);
+        }
+
+        Ok(session)
+    }
+
+    fn get_session_id<B>(&self, request: &Request<B>) -> Result<String, SessionError> {
+        let cookies_header = request
+            .headers()
+            .get(header::COOKIE)
+            .ok_or(SessionError::NotFound)?;
+
+        let cookies_str = cookies_header
+            .to_str()
+            .map_err(|e| SessionError::Cookie(e.to_string()))?;
+
+        for cookie_str in cookies_str.split(';') {
+            if let Ok(cookie) = Cookie::parse(cookie_str.trim())
+                && cookie.name() == COOKIE_NAME {
+                    let decrypted = self
+                        .crypto
+                        .decrypt(cookie.value(), &self.config.encrypt_key)
+                        .map_err(|e| SessionError::Crypto(e.to_string()))?;
+
+                    return String::from_utf8(decrypted)
+                        .map_err(|e| SessionError::Crypto(e.to_string()));
+                }
+        }
+
+        Err(SessionError::NotFound)
+    }
+
+    pub fn delete_session<B>(
+        &self,
+        request: &Request<B>,
+        response: &mut Response<B>,
+    ) -> Result<(), SessionError> {
+        if let Ok(session_id) = self.get_session_id(request) {
+            self.store.delete(&session_id);
+        }
+
+        self.clear_cookies(response)?;
+
+        Ok(())
+    }
+
+    fn clear_cookies<B>(&self, response: &mut Response<B>) -> Result<(), SessionError> {
+        let mut cookie = Cookie::build((COOKIE_NAME, ""))
+            .path("/")
+            .http_only(true)
+            .secure(self.config.secure)
+            .same_site(cookie::SameSite::Lax)
+            .max_age(cookie::time::Duration::seconds(0))
+            .build();
+
+        if let Some(ref domain) = self.config.domain {
+            cookie.set_domain(domain.clone());
+        }
+
+        response.headers_mut().append(
+            header::SET_COOKIE,
+            HeaderValue::from_str(&cookie.to_string())
+                .map_err(|e| SessionError::Cookie(e.to_string()))?,
+        );
+
+        let mut csrf_cookie = Cookie::build(("csrf_token", ""))
+            .path("/")
+            .secure(self.config.secure)
+            .same_site(cookie::SameSite::Strict)
+            .max_age(cookie::time::Duration::seconds(0))
+            .build();
+
+        if let Some(ref domain) = self.config.domain {
+            csrf_cookie.set_domain(domain.clone());
+        }
+
+        response.headers_mut().append(
+            header::SET_COOKIE,
+            HeaderValue::from_str(&csrf_cookie.to_string())
+                .map_err(|e| SessionError::Cookie(e.to_string()))?,
+        );
+
+        Ok(())
+    }
+
+    pub fn is_authenticated<B>(&self, request: &Request<B>) -> bool {
+        self.get_session(request).is_ok()
+    }
+
+    pub fn update_last_seen<B>(&self, request: &Request<B>) {
+        if let Ok(session_id) = self.get_session_id(request) {
+            self.store.update_last_seen(&session_id);
+        }
+    }
+
+    pub fn validate_csrf<B>(&self, request: &Request<B>) -> Result<(), SessionError> {
+        let session = self.get_session(request)?;
+
+        let csrf_from_cookie = self.get_csrf_from_cookie(request)?;
+        let csrf_from_header = request
+            .headers()
+            .get("X-CSRF-Token")
+            .and_then(|v| v.to_str().ok())
+            .ok_or(SessionError::InvalidCsrf)?;
+
+        if csrf_from_cookie != session.csrf_token || csrf_from_header != session.csrf_token {
+            return Err(SessionError::InvalidCsrf);
+        }
+
+        Ok(())
+    }
+
+    fn get_csrf_from_cookie<B>(&self, request: &Request<B>) -> Result<String, SessionError> {
+        let cookies_header = request
+            .headers()
+            .get(header::COOKIE)
+            .ok_or(SessionError::InvalidCsrf)?;
+
+        let cookies_str = cookies_header
+            .to_str()
+            .map_err(|e| SessionError::Cookie(e.to_string()))?;
+
+        for cookie_str in cookies_str.split(';') {
+            if let Ok(cookie) = Cookie::parse(cookie_str.trim()) {
+                if cookie.name() == "csrf_token" {
+                    return Ok(cookie.value().to_string());
+                }
+            }
+        }
+
+        Err(SessionError::InvalidCsrf)
+    }
+
+    pub fn generate_state(&self) -> Result<String, SessionError> {
+        self.crypto
+            .generate_state()
+            .map_err(|e| SessionError::Crypto(e.to_string()))
+    }
+
+    pub fn store_oauth_state(&self, state: String, original_url: String) {
+        self.store.store_oauth_state(state, original_url);
+    }
+
+    pub fn get_oauth_state(&self, state: &str) -> Option<String> {
+        self.store.get_oauth_state(state)
+    }
+
+    pub fn delete_oauth_state(&self, state: &str) {
+        self.store.delete_oauth_state(state);
+    }
+
+    pub fn cleanup_expired(&self) -> usize {
+        self.store.cleanup_expired() + self.store.cleanup_expired_states()
+    }
+}

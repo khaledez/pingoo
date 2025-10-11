@@ -70,6 +70,26 @@ pub struct ServiceConfig {
     pub http_proxy: Option<Vec<UpstreamConfig>>,
     pub r#static: Option<StaticSiteServiceConfig>,
     pub tcp_proxy: Option<Vec<UpstreamConfig>>,
+    pub auth: Option<AuthConfig>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AuthConfig {
+    pub provider: AuthProvider,
+    pub client_id: String,
+    pub client_secret: String,
+    pub redirect_url: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum AuthProvider {
+    Google,
+    Microsoft,
+    #[serde(rename = "github")]
+    GitHub,
+    #[serde(rename = "auth0")]
+    Auth0,
 }
 
 // #[derive(Clone, Debug)]
