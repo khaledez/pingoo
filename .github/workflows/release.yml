@@ -16,7 +16,6 @@ permissions:
 
 env:
   DOCKER_IMAGE: ghcr.io/khaledez/pingoo
-  DOCKER_HUB_IMAGE: pingooio/pingoo
 
 jobs:
   docker_build:
@@ -44,9 +43,7 @@ jobs:
         run: |
           make docker_build
           docker image tag ${{ env.DOCKER_IMAGE }}:latest ${{ env.DOCKER_IMAGE }}:latest-${{ matrix.arch }}
-          docker image tag ${{ env.DOCKER_IMAGE }}:latest ${{ env.DOCKER_HUB_IMAGE }}:latest-${{ matrix.arch }}
           docker image tag ${{ env.DOCKER_IMAGE }}:${PINGOO_VERSION} ${{ env.DOCKER_IMAGE }}:${PINGOO_VERSION}-${{ matrix.arch }}
-          docker image tag ${{ env.DOCKER_IMAGE }}:${PINGOO_VERSION} ${{ env.DOCKER_HUB_IMAGE }}:${PINGOO_VERSION}-${{ matrix.arch }}
 
       - name: Docker images info
         run: |
@@ -55,14 +52,11 @@ jobs:
       - name: Login to container registries
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u $ --password-stdin
-          echo "${{ secrets.DOCKER_HUB_TOKEN }}" | docker login -u ${{ secrets.DOCKER_HUB_USERNAME }} --password-stdin
 
       - name: Docker push image
         run: |
           docker push ${{ env.DOCKER_IMAGE }}:latest-${{ matrix.arch }}
-          docker push ${{ env.DOCKER_HUB_IMAGE }}:latest-${{ matrix.arch }}
           docker push ${{ env.DOCKER_IMAGE }}:${PINGOO_VERSION}-${{ matrix.arch }}
-          docker push ${{ env.DOCKER_HUB_IMAGE }}:${PINGOO_VERSION}-${{ matrix.arch }}
 
 
   docker_push_manifest:

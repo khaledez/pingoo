@@ -77,9 +77,9 @@ RUN chown -R $USER:$USER /etc/pingoo
 
 # Use the /usr/share/pingoo folder for static data.
 # reference: https://en.wikipedia.org/wiki/Filesystem_Hierarchy_Standard
-WORKDIR /usr/share/pingoo
-RUN wget https://downloads.pingoo.io/geoip.mmdb.zst
-RUN chown -R $USER:$USER /usr/share/pingoo
+# WORKDIR /usr/share/pingoo
+# RUN wget https://downloads.pingoo.io/geoip.mmdb.zst
+# RUN chown -R $USER:$USER /usr/share/pingoo
 
 
 ####################################################################################################
@@ -103,7 +103,7 @@ COPY --from=builder_files /usr/share/zoneinfo /usr/share/zoneinfo
 
 # --chown=pingoo:pingoo
 COPY --from=builder_files /etc/pingoo /etc/pingoo
-COPY --from=builder_files /usr/share/pingoo /usr/share/pingoo
+# COPY --from=builder_files /usr/share/pingoo /usr/share/pingoo
 COPY ./assets/www /var/www
 
 # Copy our build
