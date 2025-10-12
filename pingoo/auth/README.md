@@ -11,7 +11,6 @@ This module provides enterprise-grade OAuth/OIDC authentication with zero-trust 
   - Constant-time comparisons for all secrets
   - Memory zeroization for sensitive data
 - **JWT Validation**: RS256 signature verification with JWKS caching
-- **CSRF Protection**: Token-based CSRF validation
 - **Secure Cookies**: HttpOnly, Secure, SameSite attributes
 - **Session Management**: In-memory store with expiration and renewal
 
@@ -80,7 +79,7 @@ let validator = Arc::new(JwtValidator::new(jwks_provider, config));
 
 ### 3. Session Manager (`session/manager.rs`)
 
-Manages encrypted session cookies with CSRF protection.
+Manages encrypted session cookies.
 
 ```rust
 use auth::session::{SessionConfig, SessionManager};
@@ -241,7 +240,6 @@ async fn handle_oauth_callback(
         .body("Redirecting...".to_string())?;
 
     session_manager.set_session_cookie(&mut response, &session)?;
-    session_manager.set_csrf_cookie(&mut response, &session.csrf_token, session.expires_at)?;
 
     Ok(response)
 }
@@ -305,11 +303,10 @@ proxy_request_to_backend(authenticated_request).await
 
 1. **Zero-Trust**: Every request is validated independently
 2. **No Token Storage**: Sessions are stateless on the client side (encrypted cookies)
-3. **CSRF Protection**: All state-changing operations require CSRF token validation
-4. **Constant-Time Comparisons**: Prevent timing attacks on secrets
-5. **Memory Safety**: Sensitive data is zeroized after use
-6. **TLS Required**: Secure cookies only work over HTTPS
-7. **Limited Dependencies**: Minimal attack surface using aws-lc-rs
+3. **Constant-Time Comparisons**: Prevent timing attacks on secrets
+4. **Memory Safety**: Sensitive data is zeroized after use
+5. **TLS Required**: Secure cookies only work over HTTPS
+6. **Limited Dependencies**: Minimal attack surface using aws-lc-rs
 
 ## Performance
 

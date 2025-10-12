@@ -14,8 +14,6 @@ pub enum SessionError {
     NotFound,
     #[error("Session expired")]
     Expired,
-    #[error("Invalid CSRF token")]
-    InvalidCsrf,
     #[error("Crypto error: {0}")]
     Crypto(String),
     #[error("Cookie error: {0}")]
@@ -72,12 +70,7 @@ impl SessionManager {
             .generate_session_id()
             .map_err(|e| SessionError::Crypto(e.to_string()))?;
 
-        let csrf_token = self
-            .crypto
-            .generate_csrf_token()
-            .map_err(|e| SessionError::Crypto(e.to_string()))?;
-
-        let session = self.store.create(session_id, user_id, email, name, picture, csrf_token);
+        let session = self.store.create(session_id, user_id, email, name, picture);
 
         Ok(session)
     }
@@ -100,35 +93,6 @@ impl SessionManager {
             .http_only(true)
             .secure(self.config.secure)
             .same_site(cookie::SameSite::Lax)
-            .expires(cookie::Expiration::DateTime(expiration))
-            .build();
-
-        if let Some(ref domain) = self.config.domain {
-            cookie.set_domain(domain.clone());
-        }
-
-        response.headers_mut().append(
-            header::SET_COOKIE,
-            HeaderValue::from_str(&cookie.to_string())
-                .map_err(|e| SessionError::Cookie(e.to_string()))?,
-        );
-
-        Ok(())
-    }
-
-    pub fn set_csrf_cookie<B>(
-        &self,
-        response: &mut Response<B>,
-        csrf_token: &str,
-        expires_at: chrono::DateTime<chrono::Utc>,
-    ) -> Result<(), SessionError> {
-        let expiration = cookie::time::OffsetDateTime::from_unix_timestamp(expires_at.timestamp())
-            .map_err(|e| SessionError::Cookie(format!("Invalid timestamp: {}", e)))?;
-
-        let mut cookie = Cookie::build(("csrf_token", csrf_token))
-            .path("/")
-            .secure(self.config.secure)
-            .same_site(cookie::SameSite::Strict)
             .expires(cookie::Expiration::DateTime(expiration))
             .build();
 
@@ -216,72 +180,13 @@ impl SessionManager {
                 .map_err(|e| SessionError::Cookie(e.to_string()))?,
         );
 
-        let mut csrf_cookie = Cookie::build(("csrf_token", ""))
-            .path("/")
-            .secure(self.config.secure)
-            .same_site(cookie::SameSite::Strict)
-            .max_age(cookie::time::Duration::seconds(0))
-            .build();
-
-        if let Some(ref domain) = self.config.domain {
-            csrf_cookie.set_domain(domain.clone());
-        }
-
-        response.headers_mut().append(
-            header::SET_COOKIE,
-            HeaderValue::from_str(&csrf_cookie.to_string())
-                .map_err(|e| SessionError::Cookie(e.to_string()))?,
-        );
-
         Ok(())
-    }
-
-    pub fn is_authenticated<B>(&self, request: &Request<B>) -> bool {
-        self.get_session(request).is_ok()
     }
 
     pub fn update_last_seen<B>(&self, request: &Request<B>) {
         if let Ok(session_id) = self.get_session_id(request) {
             self.store.update_last_seen(&session_id);
         }
-    }
-
-    pub fn validate_csrf<B>(&self, request: &Request<B>) -> Result<(), SessionError> {
-        let session = self.get_session(request)?;
-
-        let csrf_from_cookie = self.get_csrf_from_cookie(request)?;
-        let csrf_from_header = request
-            .headers()
-            .get("X-CSRF-Token")
-            .and_then(|v| v.to_str().ok())
-            .ok_or(SessionError::InvalidCsrf)?;
-
-        if csrf_from_cookie != session.csrf_token || csrf_from_header != session.csrf_token {
-            return Err(SessionError::InvalidCsrf);
-        }
-
-        Ok(())
-    }
-
-    fn get_csrf_from_cookie<B>(&self, request: &Request<B>) -> Result<String, SessionError> {
-        let cookies_header = request
-            .headers()
-            .get(header::COOKIE)
-            .ok_or(SessionError::InvalidCsrf)?;
-
-        let cookies_str = cookies_header
-            .to_str()
-            .map_err(|e| SessionError::Cookie(e.to_string()))?;
-
-        for cookie_str in cookies_str.split(';') {
-            if let Ok(cookie) = Cookie::parse(cookie_str.trim()) {
-                if cookie.name() == "csrf_token" {
-                    return Ok(cookie.value().to_string());
-                }
-            }
-        }
-
-        Err(SessionError::InvalidCsrf)
     }
 
     pub fn generate_state(&self) -> Result<String, SessionError> {

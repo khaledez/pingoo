@@ -68,7 +68,6 @@ tls:
 # Security features:
 # - Session cookies: AES-256-GCM encrypted, HMAC-SHA256 signed
 # - Cookie flags: HttpOnly, Secure, SameSite=Lax
-# - CSRF protection: Double-submit cookie pattern
 # - JWT validation: RS256 signature, exp/nbf/iss/aud claims
 # - Zero-trust: Every request validated independently
 # - Memory safety: Rust + zeroize for sensitive data

@@ -140,6 +140,9 @@ impl AuthManagerBuilder {
     }
 
     fn scopes_for_provider(&self, _provider: &AuthProvider) -> Vec<String> {
+        if _provider == &AuthProvider::GitHub {
+            return vec!["user:email".to_string(),  "read:org".to_string()]
+        }
         vec!["openid".to_string(), "email".to_string(), "profile".to_string()]
     }
 }

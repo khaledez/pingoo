@@ -128,12 +128,6 @@ impl SessionCrypto {
         Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&bytes))
     }
 
-    pub fn generate_csrf_token(&self) -> Result<String, CryptoError> {
-        let mut bytes = [0u8; 32];
-        self.rng.fill(&mut bytes).map_err(|_| CryptoError::RandomFailed)?;
-        Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&bytes))
-    }
-
     pub fn generate_state(&self) -> Result<String, CryptoError> {
         let mut bytes = [0u8; 16];
         self.rng.fill(&mut bytes).map_err(|_| CryptoError::RandomFailed)?;

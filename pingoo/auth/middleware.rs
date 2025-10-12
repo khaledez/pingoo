@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use http::{Request, Response, StatusCode, header};
 use http_body_util::{BodyExt, combinators::BoxBody};
-use hyper::body::Incoming;
+use hyper::{Error, body::Incoming};
 use thiserror::Error;
 
 use super::{OAuthManager, SessionManager};
@@ -65,7 +65,7 @@ impl AuthMiddleware {
     pub async fn authenticate(
         &self,
         mut req: Request<Incoming>,
-    ) -> Result<Request<Incoming>, Response<BoxBody<Bytes, hyper::Error>>> {
+    ) -> Result<Request<Incoming>, Response<BoxBody<Bytes, Error>>> {
         let path = req.uri().path();
 
         if self.is_public_path(path) {
@@ -93,10 +93,9 @@ impl AuthMiddleware {
                                 .boxed();
                             Err(Response::from_parts(parts, boxed_body))
                         }
-                        Err(e) => Err(self.error_response(
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            &format!("OAuth error: {}", e),
-                        )),
+                        Err(e) => {
+                            Err(self.error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("OAuth error: {}", e)))
+                        }
                     }
                 } else if self.required {
                     Err(self.error_response(StatusCode::UNAUTHORIZED, "Authentication required"))
@@ -111,7 +110,8 @@ impl AuthMiddleware {
         session_manager: &Arc<SessionManager>,
         oauth_manager: &Arc<OAuthManager>,
         req: &mut Request<B>,
-    ) -> Result<(), Response<BoxBody<Bytes, hyper::Error>>> {
+    ) -> Result<(), Response<BoxBody<Bytes, Error>>> {
+        println!("Handling auth for: {}", req.uri());
         match session_manager.get_session(req) {
             Ok(session) => {
                 Self::add_user_headers(req, &session);
@@ -119,6 +119,7 @@ impl AuthMiddleware {
                 Ok(())
             }
             Err(_) => {
+                println!("Unauthenticated: {}", req.uri());
                 match oauth_manager.start_auth_flow(req) {
                     Ok(redirect_response) => {
                         let (parts, body) = redirect_response.into_parts();
@@ -145,7 +146,7 @@ impl AuthMiddleware {
     pub async fn handle_oauth_callback<B>(
         auth_managers: &std::collections::HashMap<String, Arc<OAuthManager>>,
         req: &Request<B>,
-    ) -> Option<Response<BoxBody<Bytes, hyper::Error>>> {
+    ) -> Option<Response<BoxBody<Bytes, Error>>> {
         let query = req.uri().query()?;
 
         let code = query
@@ -172,7 +173,10 @@ impl AuthMiddleware {
                             )
                             .unwrap();
 
-                        if let Err(_e) = oauth_manager.session_manager().set_session_cookie(&mut response, &session) {
+                        if let Err(_e) = oauth_manager
+                            .session_manager()
+                            .set_session_cookie(&mut response, &session)
+                        {
                             return Some(Self::build_error_response(
                                 StatusCode::INTERNAL_SERVER_ERROR,
                                 "Authentication failed",
@@ -200,7 +204,7 @@ impl AuthMiddleware {
     pub fn handle_logout<B>(
         auth_managers: &std::collections::HashMap<String, Arc<OAuthManager>>,
         req: &Request<B>,
-    ) -> Response<BoxBody<Bytes, hyper::Error>> {
+    ) -> Response<BoxBody<Bytes, Error>> {
         let mut temp_req_builder = Request::builder();
 
         for (name, value) in req.headers() {
@@ -217,7 +221,9 @@ impl AuthMiddleware {
         let mut temp_response = Response::new(());
 
         for (_service_name, oauth_manager) in auth_managers {
-            let _ = oauth_manager.session_manager().delete_session(&temp_req, &mut temp_response);
+            let _ = oauth_manager
+                .session_manager()
+                .delete_session(&temp_req, &mut temp_response);
         }
 
         let (parts, _body) = temp_response.into_parts();
@@ -240,7 +246,7 @@ impl AuthMiddleware {
             .unwrap()
     }
 
-    fn build_error_response(status: StatusCode, message: &str) -> Response<BoxBody<Bytes, hyper::Error>> {
+    fn build_error_response(status: StatusCode, message: &str) -> Response<BoxBody<Bytes, Error>> {
         let error_body = http_body_util::Full::new(Bytes::from(message.to_string()))
             .map_err(|never| match never {})
             .boxed();
@@ -275,7 +281,7 @@ impl AuthMiddleware {
         );
     }
 
-    fn error_response(&self, status: StatusCode, message: &str) -> Response<BoxBody<Bytes, hyper::Error>> {
+    fn error_response(&self, status: StatusCode, message: &str) -> Response<BoxBody<Bytes, Error>> {
         let body = http_body_util::Full::new(Bytes::from(message.to_string()))
             .map_err(|never| match never {})
             .boxed();

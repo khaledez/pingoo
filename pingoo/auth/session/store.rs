@@ -11,7 +11,6 @@ pub struct Session {
     pub email: String,
     pub name: String,
     pub picture: Option<String>,
-    pub csrf_token: String,
     pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
     pub last_seen: DateTime<Utc>,
@@ -41,7 +40,6 @@ impl SessionStore {
         email: String,
         name: String,
         picture: Option<String>,
-        csrf_token: String,
     ) -> Session {
         let now = Utc::now();
         let expires_at = now + chrono::Duration::from_std(self.session_duration).unwrap();
@@ -52,7 +50,6 @@ impl SessionStore {
             email,
             name,
             picture,
-            csrf_token,
             created_at: now,
             expires_at,
             last_seen: now,
@@ -76,40 +73,6 @@ impl SessionStore {
         }
     }
 
-    pub fn renew(&self, id: &str) -> Option<Session> {
-        if let Some(mut session) = self.sessions.get_mut(id) {
-            let now = Utc::now();
-            session.expires_at = now + chrono::Duration::from_std(self.session_duration).unwrap();
-            session.last_seen = now;
-            Some(session.clone())
-        } else {
-            None
-        }
-    }
-
-    pub fn get_by_user_id(&self, user_id: &str) -> Vec<Session> {
-        self.sessions
-            .iter()
-            .filter(|entry| entry.value().user_id == user_id)
-            .map(|entry| entry.value().clone())
-            .collect()
-    }
-
-    pub fn delete_by_user_id(&self, user_id: &str) -> usize {
-        let to_delete: Vec<String> = self
-            .sessions
-            .iter()
-            .filter(|entry| entry.value().user_id == user_id)
-            .map(|entry| entry.key().clone())
-            .collect();
-
-        let count = to_delete.len();
-        for id in to_delete {
-            self.sessions.remove(&id);
-        }
-        count
-    }
-
     pub fn cleanup_expired(&self) -> usize {
         let now = Utc::now();
         let to_delete: Vec<String> = self
@@ -124,19 +87,6 @@ impl SessionStore {
             self.sessions.remove(&id);
         }
         count
-    }
-
-    pub fn active_sessions(&self) -> Vec<Session> {
-        let now = Utc::now();
-        self.sessions
-            .iter()
-            .filter(|entry| entry.value().expires_at >= now)
-            .map(|entry| entry.value().clone())
-            .collect()
-    }
-
-    pub fn count(&self) -> usize {
-        self.sessions.len()
     }
 
     pub fn store_oauth_state(&self, state: String, original_url: String) {

@@ -210,11 +210,10 @@ pub(super) async fn serve_http_requests<IO: hyper::rt::Read + hyper::rt::Write +
                     .await);
             }
 
-            if path == "/auth/callback" {
-                match crate::auth::AuthMiddleware::handle_oauth_callback(&auth_managers, &req).await {
-                    Some(response) => return Ok(response),
-                    _ => (),
-                }
+            if path == "/auth/callback"
+                && let Some(response) = crate::auth::AuthMiddleware::handle_oauth_callback(&auth_managers, &req).await
+            {
+                return Ok(response);
             }
 
             if path == "/auth/logout" {
@@ -288,11 +287,9 @@ pub(super) async fn serve_http_requests<IO: hyper::rt::Read + hyper::rt::Write +
                     if let Some(oauth_manager) = auth_managers.get(&service_name) {
                         let session_manager = oauth_manager.session_manager();
 
-                        if let Err(auth_response) = crate::auth::AuthMiddleware::handle_service_auth(
-                            session_manager,
-                            oauth_manager,
-                            &mut req,
-                        ) {
+                        if let Err(auth_response) =
+                            crate::auth::AuthMiddleware::handle_service_auth(session_manager, oauth_manager, &mut req)
+                        {
                             return Ok(auth_response);
                         }
                     }
