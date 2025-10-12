@@ -79,7 +79,7 @@ impl SessionManager {
         &self,
         response: &mut Response<B>,
         session: &Session,
-    ) -> Result<(), SessionError> {
+    ) -> Result<String, SessionError> {
         let encrypted = self
             .crypto
             .encrypt(session.id.as_bytes(), &self.config.encrypt_key)
@@ -100,13 +100,16 @@ impl SessionManager {
             cookie.set_domain(domain.clone());
         }
 
+        let cookie_string = cookie.to_string();
+        println!("Setting session cookie: {}", cookie_string);
+
         response.headers_mut().append(
             header::SET_COOKIE,
-            HeaderValue::from_str(&cookie.to_string())
+            HeaderValue::from_str(&cookie_string)
                 .map_err(|e| SessionError::Cookie(e.to_string()))?,
         );
 
-        Ok(())
+        Ok(cookie_string)
     }
 
     pub fn get_session<B>(&self, request: &Request<B>) -> Result<Session, SessionError> {
@@ -125,15 +128,21 @@ impl SessionManager {
         let cookies_header = request
             .headers()
             .get(header::COOKIE)
-            .ok_or(SessionError::NotFound)?;
+            .ok_or_else(|| {
+                println!("No Cookie header found in request");
+                SessionError::NotFound
+            })?;
 
         let cookies_str = cookies_header
             .to_str()
             .map_err(|e| SessionError::Cookie(e.to_string()))?;
 
+        println!("Cookies received: {}", cookies_str);
+
         for cookie_str in cookies_str.split(';') {
             if let Ok(cookie) = Cookie::parse(cookie_str.trim())
                 && cookie.name() == COOKIE_NAME {
+                    println!("Found session cookie: {}", cookie.name());
                     let decrypted = self
                         .crypto
                         .decrypt(cookie.value(), &self.config.encrypt_key)
@@ -144,6 +153,7 @@ impl SessionManager {
                 }
         }
 
+        println!("Session cookie '{}' not found in cookies", COOKIE_NAME);
         Err(SessionError::NotFound)
     }
 

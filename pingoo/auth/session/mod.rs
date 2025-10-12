@@ -1,5 +1,6 @@
 mod crypto;
 mod manager;
+mod session_tests;
 mod store;
 
 pub use crypto::SessionCrypto;

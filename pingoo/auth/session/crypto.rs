@@ -123,15 +123,15 @@ impl SessionCrypto {
     }
 
     pub fn generate_session_id(&self) -> Result<String, CryptoError> {
-        let mut bytes = [0u8; 32];
+        let mut bytes: [u8; 32] = [0u8; 32];
         self.rng.fill(&mut bytes).map_err(|_| CryptoError::RandomFailed)?;
-        Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&bytes))
+        Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes))
     }
 
     pub fn generate_state(&self) -> Result<String, CryptoError> {
         let mut bytes = [0u8; 16];
         self.rng.fill(&mut bytes).map_err(|_| CryptoError::RandomFailed)?;
-        Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&bytes))
+        Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes))
     }
 }
 
