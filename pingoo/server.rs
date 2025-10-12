@@ -38,7 +38,7 @@ impl Server {
             Arc::new(ServiceRegistry::new(&self.config.service_discovery, &self.config.services).await?);
         service_registry.clone().start_in_background();
 
-        let geoip_db = Some(Arc::new(GeoipDB::new().await?));
+        // let geoip_db = Some(Arc::new(GeoipDB::new().await?));
 
         let captcha_manager = Arc::new(CaptchaManager::new().await?);
 
@@ -115,7 +115,7 @@ impl Server {
                         http_services_for_listener,
                         rules.clone(),
                         lists.clone(),
-                        geoip_db.clone(),
+                        None,
                         captcha_manager.clone(),
                         auth_managers_arc.clone(),
                     ))
@@ -132,7 +132,7 @@ impl Server {
                         http_services_for_listener,
                         rules.clone(),
                         lists.clone(),
-                        geoip_db.clone(),
+                        None,
                         captcha_manager.clone(),
                         auth_managers_arc.clone(),
                     ))
