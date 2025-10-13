@@ -150,15 +150,12 @@ pub(super) async fn serve_http_requests<IO: hyper::rt::Read + hyper::rt::Write +
             let geoip_record = match geoip.as_ref() {
                 Some(geoip_db) => {
                     let client_ip = client_socket_addr.ip();
-                    match geoip_db.lookup(client_ip).await {
-                        Ok(geoip_record) => geoip_record,
-                        Err(err) => {
-                            if !matches!(err, geoip::Error::AddressNotFound(_)) {
-                                error!("geoip: error looking up ip {client_ip}: {err}")
-                            }
-                            GeoipRecord::default()
+                    geoip_db.lookup(client_ip).await.unwrap_or_else(|err| {
+                        if !matches!(err, geoip::Error::AddressNotFound(_)) {
+                            error!("geoip: error looking up ip {client_ip}: {err}")
                         }
-                    }
+                        GeoipRecord::default()
+                    })
                 }
                 None => GeoipRecord::default(),
             };
@@ -210,16 +207,6 @@ pub(super) async fn serve_http_requests<IO: hyper::rt::Read + hyper::rt::Write +
                     .await);
             }
 
-            if path == "/auth/callback"
-                && let Some(response) = crate::auth::AuthMiddleware::handle_oauth_callback(&auth_managers, &req).await
-            {
-                return Ok(response);
-            }
-
-            if path == "/auth/logout" {
-                return Ok(crate::auth::AuthMiddleware::handle_logout(&auth_managers, &req));
-            }
-
             // apply rules
             let request_data = rules::RequestData {
                 host: &request_context.host,
@@ -238,12 +225,12 @@ pub(super) async fn serve_http_requests<IO: hyper::rt::Read + hyper::rt::Write +
             // true if the captcha verified cookie is present and valid
             let mut captcha_verified = false;
 
-            if let Some(chalenge_verified_cookie) = parsed_cookies
+            if let Some(challenge_verified_cookie) = parsed_cookies
                 .iter()
                 .find(|cookie| cookie.name() == CAPTCHA_VERIFIED_COOKIE)
             {
                 if captcha_manager
-                    .validate_captcha_verified_cookie(chalenge_verified_cookie.value(), &client_id)
+                    .validate_captcha_verified_cookie(challenge_verified_cookie.value(), &client_id)
                     .is_ok()
                 {
                     captcha_verified = true;
@@ -285,6 +272,18 @@ pub(super) async fn serve_http_requests<IO: hyper::rt::Read + hyper::rt::Write +
                     let service_name = service.name();
 
                     if let Some(oauth_manager) = auth_managers.get(&service_name) {
+                        if path == "/auth/callback" {
+                            let callback_result =
+                                crate::auth::AuthMiddleware::handle_oauth_callback(service_name, oauth_manager, &req).await;
+                            if let Some(res) = callback_result {
+                                return Ok(res);
+                            }
+                        }
+
+                        if path == "/auth/logout" {
+                            return Ok(crate::auth::AuthMiddleware::handle_logout(&auth_managers, &req));
+                        }
+
                         let session_manager = oauth_manager.session_manager();
 
                         if let Err(auth_response) =

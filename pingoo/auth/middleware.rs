@@ -144,7 +144,8 @@ impl AuthMiddleware {
     }
 
     pub async fn handle_oauth_callback<B>(
-        auth_managers: &std::collections::HashMap<String, Arc<OAuthManager>>,
+        _service_name: String,
+        auth_manager: &Arc<OAuthManager>,
         req: &Request<B>,
     ) -> Option<Response<BoxBody<Bytes, Error>>> {
         let query = req.uri().query()?;
@@ -159,38 +160,37 @@ impl AuthMiddleware {
             .find(|p| p.starts_with("state="))
             .and_then(|p| p.strip_prefix("state="))?;
 
-        for (_service_name, oauth_manager) in auth_managers {
-            if oauth_manager.session_manager().get_oauth_state(state).is_some() {
-                match oauth_manager.handle_callback(code, state).await {
-                    Ok((session, original_url)) => {
-                        let mut response = Response::builder()
-                            .status(StatusCode::FOUND)
-                            .header(header::LOCATION, original_url)
-                            .body(
-                                http_body_util::Full::new(Bytes::new())
-                                    .map_err(|never| match never {})
-                                    .boxed(),
-                            )
-                            .unwrap();
+        if auth_manager.session_manager().get_oauth_state(state).is_some() {
+            return match auth_manager.handle_callback(code, state).await {
+                Ok((session, original_url)) => {
+                    tracing::debug!("Original URL: {}", original_url);
+                    let mut response = Response::builder()
+                        .status(StatusCode::FOUND)
+                        .header(header::LOCATION, original_url)
+                        .body(
+                            http_body_util::Full::new(Bytes::new())
+                                .map_err(|never| match never {})
+                                .boxed(),
+                        )
+                        .unwrap();
 
-                        if let Err(_e) = oauth_manager
-                            .session_manager()
-                            .set_session_cookie(&mut response, &session)
-                        {
-                            return Some(Self::build_error_response(
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                "Authentication failed",
-                            ));
-                        }
-
-                        return Some(response);
-                    }
-                    Err(_e) => {
+                    if let Err(_e) = auth_manager
+                        .session_manager()
+                        .set_session_cookie(&mut response, &session)
+                    {
                         return Some(Self::build_error_response(
                             StatusCode::INTERNAL_SERVER_ERROR,
                             "Authentication failed",
                         ));
                     }
+
+                    Some(response)
+                }
+                Err(_e) => {
+                    Some(Self::build_error_response(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Authentication failed",
+                    ))
                 }
             }
         }

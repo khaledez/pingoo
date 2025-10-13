@@ -219,6 +219,7 @@ impl OAuthManager {
         let token_response = self.exchange_code_for_token(code).await?;
 
         let user_info = if let Some(ref id_token) = token_response.id_token {
+            tracing::debug!("Got id_token for {}", id_token);
             if let Some(ref validator) = self.jwt_validator {
                 let claims = validator
                     .validate(id_token)
