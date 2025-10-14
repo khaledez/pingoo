@@ -313,6 +313,7 @@ impl OAuthManager {
     }
 
     fn parse_user_info(&self, data: &serde_json::Value) -> Result<UserInfo, OAuthError> {
+        println!("{:?}", data);
         let id = match &self.config.provider {
             OAuthProvider::Google => data["sub"].as_str(),
             OAuthProvider::GitHub => data["id"].as_str(),
