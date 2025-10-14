@@ -128,32 +128,27 @@ impl SessionManager {
         let cookies_header = request
             .headers()
             .get(header::COOKIE)
-            .ok_or_else(|| {
-                println!("No Cookie header found in request");
-                SessionError::NotFound
-            })?;
+            .ok_or_else(||SessionError::NotFound)?;
 
         let cookies_str = cookies_header
             .to_str()
             .map_err(|e| SessionError::Cookie(e.to_string()))?;
 
-        println!("Cookies received: {}", cookies_str);
-
-        for cookie_str in cookies_str.split(';') {
-            if let Ok(cookie) = Cookie::parse(cookie_str.trim())
-                && cookie.name() == COOKIE_NAME {
-                    println!("Found session cookie: {}", cookie.name());
+        for cookie in Cookie::split_parse(cookies_str) {
+            if let Ok(cookie_data) = cookie {
+                println!("Cookie: {} = {:?}", cookie_data.name(), cookie_data.value());
+                if cookie_data.name() == COOKIE_NAME {
                     let decrypted = self
                         .crypto
-                        .decrypt(cookie.value(), &self.config.encrypt_key)
+                        .decrypt(cookie_data.value(), &self.config.encrypt_key)
                         .map_err(|e| SessionError::Crypto(e.to_string()))?;
 
                     return String::from_utf8(decrypted)
                         .map_err(|e| SessionError::Crypto(e.to_string()));
                 }
+            }
         }
 
-        println!("Session cookie '{}' not found in cookies", COOKIE_NAME);
         Err(SessionError::NotFound)
     }
 
@@ -219,5 +214,15 @@ impl SessionManager {
 
     pub fn cleanup_expired(&self) -> usize {
         self.store.cleanup_expired() + self.store.cleanup_expired_states()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cookies() {
+        HeaderValue
     }
 }
