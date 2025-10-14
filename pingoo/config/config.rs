@@ -85,11 +85,10 @@ pub struct AuthConfig {
 #[serde(rename_all = "lowercase")]
 pub enum AuthProvider {
     Google,
-    Microsoft,
     #[serde(rename = "github")]
     GitHub,
-    #[serde(rename = "auth0")]
-    Auth0,
+    #[serde(rename = "custom")]
+    Custom,
 }
 
 // #[derive(Clone, Debug)]

@@ -4,19 +4,8 @@ use bytes::Bytes;
 use http::{Request, Response, StatusCode, header};
 use http_body_util::{BodyExt, combinators::BoxBody};
 use hyper::{Error, body::Incoming};
-use thiserror::Error;
 
 use super::{OAuthManager, SessionManager};
-
-#[derive(Debug, Error)]
-pub enum AuthError {
-    #[error("Authentication required")]
-    Unauthenticated,
-    #[error("Session error: {0}")]
-    Session(String),
-    #[error("OAuth error: {0}")]
-    OAuth(String),
-}
 
 pub struct AuthMiddleware {
     session_manager: Arc<SessionManager>,
@@ -159,11 +148,22 @@ impl AuthMiddleware {
             .split('&')
             .find(|p| p.starts_with("state="))
             .and_then(|p| p.strip_prefix("state="))?;
+        let error = query
+            .split('&')
+            .find(|p| p.starts_with("error="))
+            .and_then(|p| p.strip_prefix("error="));
+
+        if let Some(err) = error {
+            return Some(Self::build_error_response(
+                StatusCode::BAD_REQUEST,
+                format!("Callback error: {err}").as_str(),
+            ))
+        }
 
         if auth_manager.session_manager().get_oauth_state(state).is_some() {
             return match auth_manager.handle_callback(code, state).await {
                 Ok((session, original_url)) => {
-                    tracing::debug!("Original URL: {}", original_url);
+                    tracing::info!("Original URL: {}", original_url);
                     let mut response = Response::builder()
                         .status(StatusCode::FOUND)
                         .header(header::LOCATION, original_url)

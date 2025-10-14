@@ -71,9 +71,8 @@ impl AuthManagerBuilder {
     fn provider_config_for_auth(&self, provider: &AuthProvider) -> Result<ProviderConfig, Error> {
         match provider {
             AuthProvider::Google => Ok(ProviderConfig::google()),
-            AuthProvider::Microsoft => Ok(ProviderConfig::microsoft(None)),
             AuthProvider::GitHub => Ok(ProviderConfig::github()),
-            AuthProvider::Auth0 => Err(Error::Config(
+            AuthProvider::Custom => Err(Error::Config(
                 "Auth0 provider requires domain configuration (not yet supported in config)".to_string(),
             )),
         }
@@ -125,17 +124,15 @@ impl AuthManagerBuilder {
         match provider {
             AuthProvider::Google => Ok(OAuthProvider::Google),
             AuthProvider::GitHub => Ok(OAuthProvider::GitHub),
-            AuthProvider::Microsoft => Ok(OAuthProvider::Microsoft { tenant_id: None }),
-            AuthProvider::Auth0 => Err(Error::Config("Auth0 not yet supported".to_string())),
+            AuthProvider::Custom => Err(Error::Config("Custom not yet supported".to_string())),
         }
     }
 
     fn issuer_for_provider(&self, provider: &AuthProvider) -> &str {
         match provider {
             AuthProvider::Google => "https://accounts.google.com",
-            AuthProvider::Microsoft => "https://login.microsoftonline.com/common/v2.0",
             AuthProvider::GitHub => "https://github.com/login/oauth",
-            AuthProvider::Auth0 => "",
+            AuthProvider::Custom => "",
         }
     }
 

@@ -62,12 +62,6 @@ pub struct OAuthConfig {
 pub enum OAuthProvider {
     Google,
     GitHub,
-    Microsoft {
-        tenant_id: Option<String>,
-    },
-    Auth0 {
-        domain: String,
-    },
     Custom {
         auth_url: String,
         token_url: String,
@@ -80,15 +74,6 @@ impl OAuthProvider {
         match self {
             OAuthProvider::Google => "https://accounts.google.com/o/oauth2/v2/auth",
             OAuthProvider::GitHub => "https://github.com/login/oauth/authorize",
-            OAuthProvider::Microsoft { tenant_id } => {
-                if let Some(tid) = tenant_id {
-                    return Box::leak(
-                        format!("https://login.microsoftonline.com/{}/oauth2/v2.0/authorize", tid).into_boxed_str(),
-                    );
-                }
-                "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
-            }
-            OAuthProvider::Auth0 { domain } => Box::leak(format!("https://{}/authorize", domain).into_boxed_str()),
             OAuthProvider::Custom { auth_url, .. } => auth_url,
         }
     }
@@ -97,15 +82,6 @@ impl OAuthProvider {
         match self {
             OAuthProvider::Google => "https://oauth2.googleapis.com/token",
             OAuthProvider::GitHub => "https://github.com/login/oauth/access_token",
-            OAuthProvider::Microsoft { tenant_id } => {
-                if let Some(tid) = tenant_id {
-                    return Box::leak(
-                        format!("https://login.microsoftonline.com/{}/oauth2/v2.0/token", tid).into_boxed_str(),
-                    );
-                }
-                "https://login.microsoftonline.com/common/oauth2/v2.0/token"
-            }
-            OAuthProvider::Auth0 { domain } => Box::leak(format!("https://{}/oauth/token", domain).into_boxed_str()),
             OAuthProvider::Custom { token_url, .. } => token_url,
         }
     }
@@ -114,8 +90,6 @@ impl OAuthProvider {
         match self {
             OAuthProvider::Google => "https://www.googleapis.com/oauth2/v2/userinfo",
             OAuthProvider::GitHub => "https://api.github.com/user",
-            OAuthProvider::Microsoft { .. } => "https://graph.microsoft.com/v1.0/me",
-            OAuthProvider::Auth0 { domain } => Box::leak(format!("https://{}/userinfo", domain).into_boxed_str()),
             OAuthProvider::Custom { userinfo_url, .. } => userinfo_url,
         }
     }
@@ -342,8 +316,6 @@ impl OAuthManager {
         let id = match &self.config.provider {
             OAuthProvider::Google => data["sub"].as_str(),
             OAuthProvider::GitHub => data["id"].as_str(),
-            OAuthProvider::Microsoft { .. } => data["id"].as_str(),
-            OAuthProvider::Auth0 { .. } => data["sub"].as_str(),
             OAuthProvider::Custom { .. } => data["id"].as_str().or(data["sub"].as_str()),
         }
         .unwrap_or("")

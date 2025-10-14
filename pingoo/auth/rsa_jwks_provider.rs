@@ -243,23 +243,4 @@ impl ProviderConfig {
             cache_ttl: Duration::from_secs(3600),
         }
     }
-
-    pub fn microsoft(tenant_id: Option<&str>) -> Self {
-        let tenant = tenant_id.unwrap_or("common");
-        Self {
-            name: "Microsoft".to_string(),
-            jwks_url: format!("https://login.microsoftonline.com/{}/discovery/v2.0/keys", tenant),
-            issuer: format!("https://login.microsoftonline.com/{}/v2.0", tenant),
-            cache_ttl: Duration::from_secs(3600),
-        }
-    }
-
-    pub fn auth0(domain: &str) -> Self {
-        Self {
-            name: "Auth0".to_string(),
-            jwks_url: format!("https://{}/.well-known/jwks.json", domain),
-            issuer: format!("https://{}/", domain),
-            cache_ttl: Duration::from_secs(3600),
-        }
-    }
 }
