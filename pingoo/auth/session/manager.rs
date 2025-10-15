@@ -4,9 +4,9 @@ use cookie::Cookie;
 use http::{HeaderValue, Request, Response, header};
 use thiserror::Error;
 
-use super::{SessionCrypto, SessionStore, Session};
+use super::{Session, SessionCrypto, SessionStore};
 
-const COOKIE_NAME : &str = "__pingoo_oauth_session";
+const COOKIE_NAME: &str = "__pingoo_oauth_session";
 
 #[derive(Debug, Error)]
 pub enum SessionError {
@@ -75,11 +75,7 @@ impl SessionManager {
         Ok(session)
     }
 
-    pub fn set_session_cookie<B>(
-        &self,
-        response: &mut Response<B>,
-        session: &Session,
-    ) -> Result<String, SessionError> {
+    pub fn set_session_cookie<B>(&self, response: &mut Response<B>, session: &Session) -> Result<String, SessionError> {
         let encrypted = self
             .crypto
             .encrypt(session.id.as_bytes(), &self.config.encrypt_key)
@@ -105,8 +101,7 @@ impl SessionManager {
 
         response.headers_mut().append(
             header::SET_COOKIE,
-            HeaderValue::from_str(&cookie_string)
-                .map_err(|e| SessionError::Cookie(e.to_string()))?,
+            HeaderValue::from_str(&cookie_string).map_err(|e| SessionError::Cookie(e.to_string()))?,
         );
 
         Ok(cookie_string)
@@ -125,36 +120,30 @@ impl SessionManager {
     }
 
     fn get_session_id<B>(&self, request: &Request<B>) -> Result<String, SessionError> {
-        let cookies_header = request
+        let cookies = request
             .headers()
             .get(header::COOKIE)
-            .ok_or(SessionError::NotFound)?;
+            .and_then(|f| f.to_str().ok())
+            .map(Cookie::split_parse);
 
-        let cookies_str = cookies_header
-            .to_str()
-            .map_err(|e| SessionError::Cookie(e.to_string()))?;
+        if let Some(cookies_list) = cookies {
+            for cookie_data in cookies_list.flatten() {
+                println!("Cookie: {} = {:?}", cookie_data.name(), cookie_data.value());
+                if cookie_data.name() == COOKIE_NAME {
+                    let decrypted = self
+                        .crypto
+                        .decrypt(cookie_data.value(), &self.config.encrypt_key)
+                        .map_err(|e| SessionError::Crypto(e.to_string()))?;
 
-        for cookie_data in Cookie::split_parse(cookies_str).flatten() {
-            println!("Cookie: {} = {:?}", cookie_data.name(), cookie_data.value());
-            if cookie_data.name() == COOKIE_NAME {
-                let decrypted = self
-                    .crypto
-                    .decrypt(cookie_data.value(), &self.config.encrypt_key)
-                    .map_err(|e| SessionError::Crypto(e.to_string()))?;
-
-                return String::from_utf8(decrypted)
-                    .map_err(|e| SessionError::Crypto(e.to_string()));
+                    return String::from_utf8(decrypted).map_err(|e| SessionError::Crypto(e.to_string()));
+                }
             }
         }
 
         Err(SessionError::NotFound)
     }
 
-    pub fn delete_session<B>(
-        &self,
-        request: &Request<B>,
-        response: &mut Response<B>,
-    ) -> Result<(), SessionError> {
+    pub fn delete_session<B>(&self, request: &Request<B>, response: &mut Response<B>) -> Result<(), SessionError> {
         if let Ok(session_id) = self.get_session_id(request) {
             self.store.delete(&session_id);
         }
@@ -179,8 +168,7 @@ impl SessionManager {
 
         response.headers_mut().append(
             header::SET_COOKIE,
-            HeaderValue::from_str(&cookie.to_string())
-                .map_err(|e| SessionError::Cookie(e.to_string()))?,
+            HeaderValue::from_str(&cookie.to_string()).map_err(|e| SessionError::Cookie(e.to_string()))?,
         );
 
         Ok(())

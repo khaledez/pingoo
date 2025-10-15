@@ -184,8 +184,6 @@ pub(super) async fn serve_http_requests<IO: hyper::rt::Read + hyper::rt::Write +
                 Vec::new()
             };
 
-            println!("-- Parsed Cookies: {:?}", parsed_cookies);
-
             let request_context = Arc::new(RequestContext {
                 client_address: client_socket_addr,
                 server_address: listener_address,
