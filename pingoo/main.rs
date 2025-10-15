@@ -34,6 +34,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::fmt::layer()
+                .json()
+                .flatten_event(true)
                 .with_writer(std::io::stderr)
                 .with_target(false)
                 .with_filter(EnvFilter::try_from_env("PINGOO_LOG").unwrap_or_else(|_| EnvFilter::new("info"))),

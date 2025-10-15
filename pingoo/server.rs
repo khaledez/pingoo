@@ -11,7 +11,7 @@ use crate::{
     service_discovery::service_registry::ServiceRegistry,
     services::{HttpService, TcpService, http_utils::new_http_service, tcp_proxy_service::TcpProxyService},
 };
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::{
     config::{Config, ListenerProtocol},
@@ -139,7 +139,10 @@ impl Server {
                 }
             };
 
-            info!("Starting listener {listener_name} on {listener_protocol}://{listener_address}");
+            info!(
+                listener = listener_name,
+                "Starting listener {listener_name} on {listener_protocol}://{listener_address}"
+            );
 
             listener.bind()?;
             listeners_handles.spawn(listener.listen(shutdown_signal.clone()));

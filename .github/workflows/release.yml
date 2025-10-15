@@ -39,7 +39,7 @@ jobs:
       #   run: |
       #     sudo apt update && sudo apt upgrade -y
 
-      - name: Docker build image
+      - name: Docker build images
         run: |
           make docker_build
           docker image tag ${{ env.DOCKER_IMAGE }}:latest ${{ env.DOCKER_IMAGE }}:latest-${{ matrix.arch }}
@@ -53,7 +53,7 @@ jobs:
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u $ --password-stdin
 
-      - name: Docker push image
+      - name: Docker push images
         run: |
           docker push ${{ env.DOCKER_IMAGE }}:latest-${{ matrix.arch }}
           docker push ${{ env.DOCKER_IMAGE }}:${PINGOO_VERSION}-${{ matrix.arch }}
