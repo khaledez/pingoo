@@ -6,7 +6,7 @@ use thiserror::Error;
 
 use super::{Session, SessionCrypto, SessionStore};
 
-const COOKIE_NAME: &str = "__pingoo_oauth_session";
+const COOKIE_NAME: &str = "_pingoo_auth_";
 
 #[derive(Debug, Error)]
 pub enum SessionError {
