@@ -277,10 +277,9 @@ pub(super) async fn serve_http_requests<IO: hyper::rt::Read + hyper::rt::Write +
                                 crate::auth::AuthMiddleware::handle_oauth_callback(service_name, oauth_manager, &req)
                                     .await;
                             if let Some(res) = callback_result {
-                                println!("Setting cookie: {:?}", res.headers().get(SET_COOKIE));
                                 return Ok(res);
                             } else {
-                                println!("Failure in callback: {:?}", callback_result);
+                                tracing::error!("Failure in callback: {:?}", callback_result);
                             }
                         }
 

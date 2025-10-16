@@ -142,11 +142,8 @@ impl AuthMiddleware {
         let (code, state) = code_state_result.unwrap();
 
         if auth_manager.session_manager().get_oauth_state(state).is_some() {
-            println!("found state in store: {}", state);
             return match auth_manager.handle_callback(code, state).await {
                 Ok((session, original_url)) => {
-                    tracing::info!("Original URL: {}", original_url);
-                    println!("Session: {:?}", session);
                     let mut response = Response::builder()
                         .status(StatusCode::FOUND)
                         .header(header::LOCATION, original_url)

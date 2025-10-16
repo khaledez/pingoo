@@ -85,10 +85,8 @@ impl SessionManager {
             .map_err(|e| SessionError::Cookie(format!("Invalid timestamp: {}", e)))?;
 
         let mut cookie = Cookie::build((COOKIE_NAME, encrypted))
-            .path("/")
             .http_only(true)
             .secure(self.config.secure)
-            .same_site(cookie::SameSite::Lax)
             .expires(cookie::Expiration::DateTime(expiration))
             .build();
 
@@ -121,11 +119,8 @@ impl SessionManager {
     fn get_session_id<B>(&self, request: &Request<B>) -> Result<String, SessionError> {
         let cookies = request.headers().get(header::COOKIE).and_then(|f| f.to_str().ok());
 
-        println!("Cookies: {:?}", cookies);
-
         if let Some(cookies_list) = cookies.map(Cookie::split_parse) {
             for cookie_data in cookies_list.flatten() {
-                println!("Cookie: {} = {:?}", cookie_data.name(), cookie_data.value());
                 if cookie_data.name() == COOKIE_NAME {
                     let decrypted = self
                         .crypto

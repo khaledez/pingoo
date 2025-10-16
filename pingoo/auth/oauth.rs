@@ -191,7 +191,6 @@ impl OAuthManager {
         self.session_manager.delete_oauth_state(state);
 
         let token_response = self.exchange_code_for_token(code).await?;
-        println!("token_response: {:?}", token_response);
 
         let user_info = if let Some(ref id_token) = token_response.id_token {
             tracing::debug!("Got id_token for {}", id_token);
