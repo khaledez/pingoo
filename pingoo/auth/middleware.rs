@@ -135,25 +135,27 @@ impl AuthMiddleware {
     ) -> Option<Response<BoxBody<Bytes, Error>>> {
         let query = req.uri().query()?;
 
+        println!("query: {:?}", query);
+
         let code = query
             .split('&')
             .find(|p| p.starts_with("code="))
             .and_then(|p| p.strip_prefix("code="))?;
 
+        println!("code: {}", code);
         let state = query
             .split('&')
             .find(|p| p.starts_with("state="))
             .and_then(|p| p.strip_prefix("state="))?;
+        println!("state: {}", state);
         let error = query
             .split('&')
             .find(|p| p.starts_with("error="))
-            .and_then(|p| p.strip_prefix("error="));
-
-        if let Some(err) = error {
-            return Some(Self::build_error_response(
-                StatusCode::BAD_REQUEST,
-                format!("Callback error: {err}").as_str(),
-            ));
+            .and_then(|p| p.strip_prefix("error="))
+            .map(|err| Self::build_error_response(StatusCode::BAD_REQUEST, format!("Callback error: {err}").as_str()));
+        if error.is_some() {
+            println!("error: {:?}", error);
+            return error;
         }
 
         if auth_manager.session_manager().get_oauth_state(state).is_some() {
