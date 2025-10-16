@@ -2,7 +2,7 @@ use std::{collections::HashMap, net::SocketAddr, str::FromStr, sync::Arc};
 
 use ::rules::Action;
 use cookie::Cookie;
-use http::Request;
+use http::{Request, header::SET_COOKIE};
 use hyper::service::service_fn;
 use hyper_util::{
     rt::{TokioExecutor, TokioIo},
@@ -274,8 +274,10 @@ pub(super) async fn serve_http_requests<IO: hyper::rt::Read + hyper::rt::Write +
                     if let Some(oauth_manager) = auth_managers.get(&service_name) {
                         if path == "/auth/callback" {
                             let callback_result =
-                                crate::auth::AuthMiddleware::handle_oauth_callback(service_name, oauth_manager, &req).await;
+                                crate::auth::AuthMiddleware::handle_oauth_callback(service_name, oauth_manager, &req)
+                                    .await;
                             if let Some(res) = callback_result {
+                                println!("Setting cookie: {:?}", res.headers().get(SET_COOKIE));
                                 return Ok(res);
                             }
                         }
