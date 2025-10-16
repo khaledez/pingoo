@@ -100,35 +100,31 @@ impl AuthMiddleware {
         oauth_manager: &Arc<OAuthManager>,
         req: &mut Request<B>,
     ) -> Result<(), Response<BoxBody<Bytes, Error>>> {
-        println!("Handling auth for: {}", req.uri());
         match session_manager.get_session(req) {
             Ok(session) => {
                 Self::add_user_headers(req, &session);
                 session_manager.update_last_seen(req);
                 Ok(())
             }
-            Err(_) => {
-                println!("Unauthenticated: {}", req.uri());
-                match oauth_manager.start_auth_flow(req) {
-                    Ok(redirect_response) => {
-                        let (parts, body) = redirect_response.into_parts();
-                        let boxed_body = http_body_util::Full::new(Bytes::from(body))
-                            .map_err(|never| match never {})
-                            .boxed();
-                        Err(Response::from_parts(parts, boxed_body))
-                    }
-                    Err(_e) => {
-                        let error_body = http_body_util::Full::new(Bytes::from("Authentication error"))
-                            .map_err(|never| match never {})
-                            .boxed();
-                        Err(Response::builder()
-                            .status(StatusCode::INTERNAL_SERVER_ERROR)
-                            .header(header::CONTENT_TYPE, "text/plain")
-                            .body(error_body)
-                            .unwrap())
-                    }
+            Err(_) => match oauth_manager.start_auth_flow(req) {
+                Ok(redirect_response) => {
+                    let (parts, body) = redirect_response.into_parts();
+                    let boxed_body = http_body_util::Full::new(Bytes::from(body))
+                        .map_err(|never| match never {})
+                        .boxed();
+                    Err(Response::from_parts(parts, boxed_body))
                 }
-            }
+                Err(_e) => {
+                    let error_body = http_body_util::Full::new(Bytes::from("Authentication error"))
+                        .map_err(|never| match never {})
+                        .boxed();
+                    Err(Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .header(header::CONTENT_TYPE, "text/plain")
+                        .body(error_body)
+                        .unwrap())
+                }
+            },
         }
     }
 
@@ -157,7 +153,7 @@ impl AuthMiddleware {
             return Some(Self::build_error_response(
                 StatusCode::BAD_REQUEST,
                 format!("Callback error: {err}").as_str(),
-            ))
+            ));
         }
 
         if auth_manager.session_manager().get_oauth_state(state).is_some() {
@@ -186,13 +182,11 @@ impl AuthMiddleware {
 
                     Some(response)
                 }
-                Err(_e) => {
-                    Some(Self::build_error_response(
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "Authentication failed",
-                    ))
-                }
-            }
+                Err(_e) => Some(Self::build_error_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Authentication failed",
+                )),
+            };
         }
 
         Some(Self::build_error_response(

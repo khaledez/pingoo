@@ -33,14 +33,7 @@ impl SessionStore {
         }
     }
 
-    pub fn create(
-        &self,
-        id: String,
-        user_id: String,
-        email: String,
-        name: String,
-        picture: Option<String>,
-    ) -> Session {
+    pub fn create(&self, id: String, user_id: String, email: String, name: String, picture: Option<String>) -> Session {
         let now = Utc::now();
         let expires_at = now + chrono::Duration::from_std(self.session_duration).unwrap();
 
@@ -55,25 +48,13 @@ impl SessionStore {
             last_seen: now,
         };
 
-        println!("Creating session with ID: {}", id);
         self.sessions.insert(id, session.clone());
         println!("Session store now has {} sessions", self.sessions.len());
         session
     }
 
     pub fn get(&self, id: &str) -> Option<Session> {
-        println!("Looking for session with ID: {}", id);
-        println!("Session store has {} sessions", self.sessions.len());
-        let result = self.sessions.get(id).map(|s| s.value().clone());
-        if result.is_some() {
-            println!("Session found!");
-        } else {
-            println!("Session NOT found. Available session IDs:");
-            for entry in self.sessions.iter() {
-                println!("  - {}", entry.key());
-            }
-        }
-        result
+        self.sessions.get(id).map(|s| s.value().clone())
     }
 
     pub fn delete(&self, id: &str) {

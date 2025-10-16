@@ -97,7 +97,6 @@ impl SessionManager {
         }
 
         let cookie_string = cookie.to_string();
-        println!("Setting session cookie: {}", cookie_string);
 
         response.headers_mut().append(
             header::SET_COOKIE,
@@ -120,13 +119,11 @@ impl SessionManager {
     }
 
     fn get_session_id<B>(&self, request: &Request<B>) -> Result<String, SessionError> {
-        let cookies = request
-            .headers()
-            .get(header::COOKIE)
-            .and_then(|f| f.to_str().ok())
-            .map(Cookie::split_parse);
+        let cookies = request.headers().get(header::COOKIE).and_then(|f| f.to_str().ok());
 
-        if let Some(cookies_list) = cookies {
+        println!("Cookies: {:?}", cookies);
+
+        if let Some(cookies_list) = cookies.map(Cookie::split_parse) {
             for cookie_data in cookies_list.flatten() {
                 println!("Cookie: {} = {:?}", cookie_data.name(), cookie_data.value());
                 if cookie_data.name() == COOKIE_NAME {
