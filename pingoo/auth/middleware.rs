@@ -135,33 +135,18 @@ impl AuthMiddleware {
     ) -> Option<Response<BoxBody<Bytes, Error>>> {
         let query = req.uri().query()?;
 
-        println!("query: {:?}", query);
-
-        let code = query
-            .split('&')
-            .find(|p| p.starts_with("code="))
-            .and_then(|p| p.strip_prefix("code="))?;
-
-        println!("code: {}", code);
-        let state = query
-            .split('&')
-            .find(|p| p.starts_with("state="))
-            .and_then(|p| p.strip_prefix("state="))?;
-        println!("state: {}", state);
-        let error = query
-            .split('&')
-            .find(|p| p.starts_with("error="))
-            .and_then(|p| p.strip_prefix("error="))
-            .map(|err| Self::build_error_response(StatusCode::BAD_REQUEST, format!("Callback error: {err}").as_str()));
-        if error.is_some() {
-            println!("error: {:?}", error);
-            return error;
+        let code_state_result = extract_state_code(query);
+        if let Err(err) = code_state_result {
+            return Some(Self::build_error_response(StatusCode::BAD_REQUEST, format!("Callback error: {err}").as_str()));
         }
+        let (code, state) = code_state_result.unwrap();
 
         if auth_manager.session_manager().get_oauth_state(state).is_some() {
+            println!("found state in store: {}", state);
             return match auth_manager.handle_callback(code, state).await {
                 Ok((session, original_url)) => {
                     tracing::info!("Original URL: {}", original_url);
+                    println!("Session: {:?}", session);
                     let mut response = Response::builder()
                         .status(StatusCode::FOUND)
                         .header(header::LOCATION, original_url)
@@ -288,6 +273,35 @@ impl AuthMiddleware {
             .body(body)
             .unwrap()
     }
+}
+
+fn extract_state_code(qry_string: &str) -> Result<(&str, &str), String> {
+    let code = qry_string
+        .split('&')
+        .find(|p| p.starts_with("code="))
+        .and_then(|p| p.strip_prefix("code="));
+
+    let state = qry_string
+        .split('&')
+        .find(|p| p.starts_with("state="))
+        .and_then(|p| p.strip_prefix("state="));
+
+    if let Some(code) = code
+        && let Some(state) = state
+    {
+        return Ok((code, state));
+    }
+
+    let error = qry_string
+        .split('&')
+        .find(|p| p.starts_with("error="))
+        .and_then(|p| p.strip_prefix("error="));
+    if let Some(error) = error {
+        return Err(error.to_string());
+    }
+    let error_msg = format!("Unknown error, code: {:?}, state: {:?}", code.clone(), state.clone());
+
+    Err(error_msg)
 }
 
 pub struct AuthContext {
