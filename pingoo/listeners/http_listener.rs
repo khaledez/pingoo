@@ -279,6 +279,8 @@ pub(super) async fn serve_http_requests<IO: hyper::rt::Read + hyper::rt::Write +
                             if let Some(res) = callback_result {
                                 println!("Setting cookie: {:?}", res.headers().get(SET_COOKIE));
                                 return Ok(res);
+                            } else {
+                                println!("Failure in callback: {:?}", callback_result);
                             }
                         }
 
